@@ -13,6 +13,7 @@ public struct ZainabRayCast
     public Vector3 Direction;
     public Vector3 IpadPosition;
     public Quaternion IpadRotation; 
+    public Quaternion IpadGyro; 
     public bool ScreenCoordinatesReady;
     public bool RaycastDataReady;
 }
@@ -29,8 +30,10 @@ public class UDPReceiver : NetworkBehaviour
     public Material highlightMaterial; 
     private List<ZainabRayCast> sessions = new List<ZainabRayCast>();
     public Camera virtualCamera; 
-    
-
+    private float initialYAngle = 0f; 
+    private float appliedGyroYAngle = 0f;
+    private float calibrationYAngle = 0f;
+    //  public LineRenderer lineRenderer; 
     void Start()
     {
         if (IsServer)
@@ -39,11 +42,24 @@ public class UDPReceiver : NetworkBehaviour
         udpClient = new UdpClient(listenPort);
         udpClient.Client.Blocking = false; 
         targetObject.transform.position = Vector3.zero; 
-        }
-        Screen.SetResolution(7680, 2880, false);
+        initialYAngle = targetObject.transform.eulerAngles.y ; 
         GameObject cameraObject = new GameObject("VirtualCamera");
         virtualCamera = cameraObject.AddComponent<Camera>();
         virtualCamera.enabled = false; // Disable rendering
+
+        //  lineRenderer = gameObject.AddComponent<LineRenderer>();
+            // lineRenderer.material = new Material(Shader.Find("Sprites/Default")); // Ensure you use a material that makes the line visible
+            // lineRenderer.startColor = Color.blue;
+            // lineRenderer.endColor = Color.red;
+            // lineRenderer.startWidth = 0.02f;
+            // lineRenderer.endWidth = 0.02f;
+
+        }
+        Screen.SetResolution(7680, 2880, false);
+        // GameObject cameraObject = new GameObject("VirtualCamera");
+        // virtualCamera = cameraObject.AddComponent<Camera>();
+        // virtualCamera.enabled = false; // Disable rendering
+        // initialYAngle = virtualCamera.transform.eulerAngles.y;
     }
 
     void Update()
@@ -52,6 +68,7 @@ public class UDPReceiver : NetworkBehaviour
         {
             try
             {
+                
                 IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                 byte[] receivedBytes = udpClient.Receive(ref remoteEndPoint); 
                 string receivedText = Encoding.ASCII.GetString(receivedBytes);
@@ -84,6 +101,16 @@ public class UDPReceiver : NetworkBehaviour
             data = data.Substring("DATA:".Length);
             ParseCastAndCoord(data); 
         }
+        else if (data.StartsWith("ANGLE"))
+        { 
+            data = data.Substring("ANGLE".Length);
+            ParseAngle(data); 
+        }
+        // else if (data.StartsWith("GRYO"))
+        // { 
+        //     data = data.Substring("GRYO:".Length);
+        //     ParseGyroData(data); 
+        // }
         // else if (data.StartsWith("COORD"))
         // {
         //     data = data.Substring("COORD:".Length);
@@ -103,7 +130,9 @@ public class UDPReceiver : NetworkBehaviour
         {
             string[] splitData = data.Split(',');
 
-            if (splitData.Length >= 15) //Screen coords x, y, Ray origin x, y, z, Ray direction x, y, z, Ipad position x,y,z Ipad quaternion x y z w 
+            // Debug.Log("doid ya come here " + splitData.Length); 
+
+            if (splitData.Length >= 18) //Screen coords x, y, Ray origin x, y, z, Ray direction x, y, z, Ipad position x,y,z Ipad quaternion x y z w, input.gyro quaternion
             {
                 // Parse screen coordinates
                 Vector2 position = new Vector2(
@@ -136,12 +165,20 @@ public class UDPReceiver : NetworkBehaviour
                     float.Parse(splitData[13]),
                     float.Parse(splitData[14])
                 );
+
+                Quaternion iPadGyro = new Quaternion(
+                    float.Parse(splitData[15]),
+                    float.Parse(splitData[16]),
+                    float.Parse(splitData[17]),
+                    float.Parse(splitData[18])
+                );
                 float width = 1.86f; 
                 float height = 0.726f;
                 
                 Vector3 newPos = new Vector3(pixelCoordinates.x - width, pixelCoordinates.y, targetObject.transform.position.z);
                 targetObject.transform.position = newPos;
-                // targetObject.transform.rotation = Quaternion.Inverse(cameraRotation) ; 
+                // Debug.Log("This is my ipad gyro " + cameraRotation.eulerAngles ); 
+                
                 Vector2 toSend = new Vector2(newPos.x, newPos.y); 
                 ZainabRayCast session = new ZainabRayCast
                 {
@@ -150,6 +187,7 @@ public class UDPReceiver : NetworkBehaviour
                     Direction = direction,
                     IpadPosition = cameraPosition,
                     IpadRotation = cameraRotation,
+                    IpadGyro = iPadGyro, 
                     ScreenCoordinatesReady = true,
                     RaycastDataReady = true
                 };
@@ -157,139 +195,138 @@ public class UDPReceiver : NetworkBehaviour
                 PerformRaycast(session);
             }
         }
+void ParseAngle(string data)
+{
+    string[] splitData = data.Split(',');
+    float angleWithNormal = float.Parse(splitData[0]);
+    float angleWithRight = float.Parse(splitData[1]);
+    float angleWithDown = float.Parse(splitData[2]);
 
+    float yaw = angleWithRight * Mathf.Deg2Rad;
+    float pitch = angleWithDown * Mathf.Deg2Rad;
+    float roll = angleWithNormal * Mathf.Deg2Rad; 
 
+    //     Vector3 rayDirection = new Vector3(
+    //     Mathf.Sin(yaw) * Mathf.Cos(pitch),
+    //     Mathf.Sin(pitch),
+    //     Mathf.Cos(yaw) * Mathf.Cos(pitch)
+    // );
+    // Vector3 rayDirection = new Vector3(pitch,yaw,roll); 
+
+    // Draw the ray
+    // Debug.DrawRay(targetObject.transform.position, rayDirection * 10, Color.red, 2f);
+}
 
     // void PerformRaycast(ZainabRayCast session)
     // {
+    //     RaycastHit hit ; 
+    //     float maxRayDistance = Mathf.Infinity; 
+    //     Vector3 rayOrigin = targetObject.transform.position; 
+    //     Quaternion gyroAttitude = session.IpadRotation; 
+    //     // virtualCamera.transform.position = targetObject.transform.position; 
 
-    //  foreach (Camera cam in Camera.allCameras)
-    //             {
-    //                 // Check if the camera is enabled and rendering
-    //                 if (cam.enabled && cam.isActiveAndEnabled)
-    //                 {
-    //                     // Debug.Log("Active Camera: " + cam.name + ", Display: " + cam.targetDisplay);
-    //                     Ray ray = cam.ViewportPointToRay(session.ScreenCoordinates);
-    //                     ray.direction = session.Direction;
-    //                     RaycastHit hit;
-    //                     float rayLength = 100f;
-    //                     Debug.DrawRay(ray.origin, ray.direction * rayLength, Color.red, 2f);
+    //     Quaternion correctedGyro = new Quaternion(session.IpadGyro.x, session.IpadGyro.y, -session.IpadGyro.z, -session.IpadGyro.w);
 
-    //                         if (Physics.Raycast(ray.origin, ray.direction, out hit, rayLength))
-    //                         {
-    //                             Debug.Log("Hit: " + hit.collider.name);
-    //                             NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-    //                             if (cube != null)
-    //                             {
-    //                                 cube.SetHighlight(true);
-    //                             }
-    //                         }
-    //                         else
-    //                         {
-    //                             Debug.Log("No hit");
-    //                         }
-    //                 }
-    //             }
-    // }
-// void PerformRaycast(ZainabRayCast session)
-// {
-//     RaycastHit hit;
-//     float maxRayDistance = Mathf.Infinity; 
-//     Vector3 rayOrigin = targetObject.transform.position;
-//     // Vector3 directionVector = Quaternion.Inverse(session.IpadRotation) *Vector3.forward; 
-    
-//     Vector3 directionVector = Quaternion.Euler(session.Direction) * targetObject.transform.forward;
-//     //     Quaternion rayDirectionRotation = Quaternion.Euler(session.Direction); 
-//     // Quaternion combinedRotation = session.CameraRotation * directionRotation;
-//     // Vector3 directionVector =  combinedRotation* Vector3.forward;
-    
-//     // Debug.Log("This is session direction " + session.Direction); 
-//     Vector3 rayDirection = -session.Direction.normalized;
-//     rayDirection = targetObject.transform.forward; 
-//     rayDirection = directionVector; 
-//     // Debug.Log("This is ray direction " + rayDirection); 
+    //     // Unity's coordinate system adjustment
+    //     Quaternion coordinateAdjustment = Quaternion.Euler(90f, 0f, 0f);
+    //     correctedGyro *= coordinateAdjustment;
+    //     float pitch = correctedGyro.eulerAngles.y; // Nodding "yes" - tilt forward/backward
+    //     float yaw = correctedGyro.eulerAngles.z;   // Shaking "no" - rotate left/right
+    //     // targetObject.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+    //     Vector3 rayDirection = new Vector3(session.Direction.x, session.Direction.z,session.Direction.x);
+    //     bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, maxRayDistance);
+    //     Color rayColor = didHit ? Color.red : Color.blue;
+    //     Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f); // Draw for 2 seconds
 
-//     // Always draw the ray. The color is red if it hits an object, blue otherwise.
-//     bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, maxRayDistance);
-//     Color rayColor = didHit ? Color.red : Color.blue;
-//     Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f); // Draw for 2 seconds
+    //     if (didHit)
+    //     {
+    //         // HighlightObject(hit.collider.gameObject);
+    //         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+    //         Debug.Log("This is the NetworkCube component: " + cube);
 
-//     if (didHit)
-//     {
-//         // HighlightObject(hit.collider.gameObject);
-//         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-//         Debug.Log("This is the NetworkCube component: " + cube);
+    //         if (cube != null && IsServer)
+    //         {
+    //             Debug.Log("Raycast hit a cube on the server.");
+    //             cube.SetHighlight(true);
+    //         }
+    //         Debug.Log("Raycast hit an object at distance: " + hit.distance);
+    //     }
+    //     else
+    //     {
+    //         // Debug.Log("Raycast did not hit any object.");
+    //     }
+    // } 
 
-//         if (cube != null && IsServer)
-//         {
-//             Debug.Log("Raycast hit a cube on the server.");
-//             cube.SetHighlight(true);
-//         }
-//         Debug.Log("Raycast hit an object at distance: " + hit.distance);
-//     }
-//     else
-//     {
-//         // Debug.Log("Raycast did not hit any object.");
-//     }
-// }
 
-// void PerformRaycast(ZainabRayCast session)
-//     {
-//         virtualCamera.transform.position = targetObject.transform.position;
-//         virtualCamera.transform.rotation = Quaternion.Inverse(session.IpadRotation);
-//         virtualCamera.transform.forward = targetObject.transform.forward; 
 
-//         Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates); // Using the center point
-
-//         if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
-//         {
-//             Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
-//             NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-//             if (cube != null && IsServer)
-//             {
-//                 cube.SetHighlight(true);
-//             }
-//         }
-//         else
-//         {
-//             Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
-//         }
-//     }
-
-void PerformRaycast(ZainabRayCast session)
-{
-    foreach (Camera cam in Camera.allCameras)
+    void PerformRaycast(ZainabRayCast session)
     {
-        // Check if the camera is enabled and rendering
-        if (cam.enabled && cam.isActiveAndEnabled)
+        RaycastHit hit;
+        float maxRayDistance = Mathf.Infinity;
+        Vector3 rayOrigin = targetObject.transform.position;
+        Quaternion initialRotation = originRotation; 
+        Quaternion currentRotation = session.IpadRotation;
+        Quaternion rotationDelta = Quaternion.Inverse(initialRotation) * currentRotation;
+        Quaternion correctedRotation = new Quaternion(rotationDelta.x, -rotationDelta.y, rotationDelta.z, rotationDelta.w);
+        // Quaternion adjustment = Quaternion.Euler(90, 0, 0); // Adjust to landscape mode orientation
+        // correctedRotation *= adjustment;
+        targetObject.transform.rotation = correctedRotation; 
+        Vector3 rayDirection = session.Direction; 
+        // Vector3 rayDirection = correctedRotation * Vector3.forward;  
+
+        bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, 100000f);
+        Color rayColor = didHit ? Color.red : Color.blue;
+        Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f);
+
+        if (didHit)
         {
-            // Convert viewport coordinates (normalized screen coordinates) to a world point
-            Vector3 worldPoint = cam.ViewportToWorldPoint(new Vector3(session.ScreenCoordinates.x, session.ScreenCoordinates.y, cam.nearClipPlane));
-
-            // Create a ray from the camera position through the world point
-            Ray ray = new Ray(cam.transform.position, worldPoint - cam.transform.position);
-
-            // Optionally, to extend the ray into the scene, you can calculate a farther end point
-            Vector3 farPoint = cam.ViewportToWorldPoint(new Vector3(session.ScreenCoordinates.x, session.ScreenCoordinates.y, cam.farClipPlane));
-
-            // Draw the ray in the scene view for debugging
-            Debug.DrawRay(ray.origin, ray.direction * (cam.farClipPlane - cam.nearClipPlane), Color.red, 2f);
-
-            // Perform the raycast
-            if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
+            NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+            if (cube != null && IsServer)
             {
-                Debug.Log("Hit: " + hit.collider.gameObject.name);
-                // Additional logic here to handle the hit object
+                Debug.Log("Raycast hit a cube on the server.");
+                cube.SetHighlight(true);
             }
-            else
-            {
-                Debug.Log("No hit detected.");
-            }
+            Debug.Log("Raycast hit an object at distance: " + hit.distance);
         }
     }
-}
+//  void PerformRaycast(ZainabRayCast session)
+//     {
+
+//      foreach (Camera cam in Camera.allCameras)
+//                 {
+//                     // Check if the camera is enabled and rendering
+//                     if (cam.enabled && cam.isActiveAndEnabled)
+//                     {
+//                         // Debug.Log("Active Camera: " + cam.name + ", Display: " + cam.targetDisplay);
+//                         Ray ray = cam.ViewportPointToRay(session.ScreenCoordinates);
 
 
+//                             Quaternion initialRotation = originRotation; 
+//                             Quaternion currentRotation = session.IpadRotation;
+//                             Quaternion rotationDelta = Quaternion.Inverse(initialRotation) * currentRotation;
+//                             Quaternion correctedRotation = new Quaternion(rotationDelta.x, -rotationDelta.y, rotationDelta.z, rotationDelta.w);
+//                             Vector3 rayDirection = correctedRotation * Vector3.forward ;
+//                             ray.direction = rayDirection ; 
+//                         RaycastHit hit;
+//                         float rayLength = 100f;
+//                         Debug.DrawRay(ray.origin, ray.direction * rayLength, Color.red, 2f);
+
+//                             if (Physics.Raycast(ray.origin, ray.direction, out hit, rayLength))
+//                             {
+//                                 Debug.Log("Hit: " + hit.collider.name);
+//                                 NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+//                                 if (cube != null)
+//                                 {
+//                                     cube.SetHighlight(true);
+//                                 }
+//                             }
+//                             else
+//                             {
+//                                 Debug.Log("No hit");
+//                             }
+//                     }
+//                 }
+//     }
     void HighlightObject(GameObject obj)
     {
         var renderer = obj.GetComponent<Renderer>();
@@ -322,28 +359,20 @@ void PerformRaycast(ZainabRayCast session)
                 float.Parse(splitData[5]),
                 float.Parse(splitData[6])
             );
-
             if (isSettingOrigin && !isOriginSet)
             {
                 // originPosition = position;
-                // originRotation = rotation;
-                // isOriginSet = true;
+                originRotation = rotation;
+                isOriginSet = true;
                 // targetObject.transform.localPosition = originPosition;
                 // targetObject.transform.localRotation = originRotation;
 
-                // Debug.Log("Origin set at position: " + originPosition + " and rotation: " + originRotation);
-            }
-            else if (targetObject != null && isOriginSet)
-            {
-                // Vector3 positionOffset = (position - originPosition);
-                // Quaternion rotationOffset = rotation * Quaternion.Inverse(originRotation);
-                // targetObject.transform.localPosition = positionOffset;
-                // targetObject.transform.localRotation = rotationOffset;
-                // mainCamera.transform.LookAt(targetObject.transform.position);
-                // Debug.Log("Updated position and rotation relative to origin.");
+                Debug.Log("Origin set at rotation: " + originRotation);
             }
         }
+
     }
+
 
     void OnDestroy()
     {
@@ -351,79 +380,89 @@ void PerformRaycast(ZainabRayCast session)
     }
 }
 
-    // void ParseScreenCoordinates(string data)
-    // {
-    //     string[] splitData = data.Split(',');
-    //     if (splitData.Length >= 2)
-    //     {
-    //         Vector2 position = new Vector2(
-    //             // (1.0f - (float.Parse(splitData[0])))+ 0.5f,
-    //             float.Parse(splitData[0]) + 0.5f, 
-    //             1.0f - float.Parse(splitData[1])
-    //         ); 
-    //         Vector2 pixelCoordinates = GetPixelCoordinates(position); 
-    //         // Debug.Log("This is the coordinate in metres " + pixelCoordinates); 
 
-    //         float width = 1.86f; 
-    //         float height = 0.726f;
 
-    //         Vector3 newPos = new Vector3(pixelCoordinates.x - width, pixelCoordinates.y, targetObject.transform.position.z);
-    //         targetObject.transform.position = newPos; 
-    //         Vector2 toSend = new Vector2(newPos.x, newPos.y); 
+        // //   if (didHit)
+        // // {
+        // //     lineRenderer.SetPosition(0, rayOrigin);
+        // //     lineRenderer.SetPosition(1, hit.point); // Draw line to where ray hits object
+        // // }
+        // // else
+        // // {
+        // //     lineRenderer.SetPosition(0, rayOrigin);
+        // //     lineRenderer.SetPosition(1, rayOrigin + rayDirection * 100f); // Or some large number to indicate direction
+        // // }
 
-    //         ZainabRayCast session = new ZainabRayCast
-    //         {
-    //             ScreenCoordinates = toSend,
-    //             ScreenCoordinatesReady = true
-    //         };
-    //         sessions.Add(session);
-    //         TryRaycast(ref session);
-    //     }
-    // }
+        
+// void PerformRaycast(ZainabRayCast session)
+// {
+//     // Set the position to the target object's position
+//     virtualCamera.transform.position = targetObject.transform.position;
+    
+//     // Get the gyroscope attitude and adjust it to Unity's coordinate system
+//     Quaternion gyroAttitude = session.IpadGyro ; 
+//     Quaternion adjustedRotation = new Quaternion(gyroAttitude.x, gyroAttitude.y, -gyroAttitude.z, -gyroAttitude.w);
+//     virtualCamera.transform.localRotation = adjustedRotation;
 
-    // void ParseRayCast(string data)
-    // {
-    //     string[] splitData = data.Split(',');
-    //     if (splitData.Length >= 6)
-    //     {
-    //         Vector3 origin = new Vector3(
-    //             float.Parse(splitData[0]),
-    //             float.Parse(splitData[1]),
-    //             float.Parse(splitData[2])
-    //         ); 
-    //         Vector3 direction = new Vector3(
-    //             float.Parse(splitData[3]),
-    //             float.Parse(splitData[4]),
-    //             float.Parse(splitData[5])
-    //         );
-    //     for (int i = 0; i < sessions.Count; i++)
-    //         {
-    //             if (!sessions[i].RaycastDataReady)
-    //             {
-    //                 ZainabRayCast session = sessions[i];
-    //                 session.Origin = origin;
-    //                 session.Direction = direction;
-    //                 session.RaycastDataReady = true;
-    //                 sessions[i] = session; // Important to reassign the struct in the list
-    //                 TryRaycast(ref session);
-    //                 return;
-    //             }
-    //         }
+//     // Rotate to correct for Unity's coordinate system
+//     // virtualCamera.transform.Rotate(0f, 0f, 180f, Space.Self);
+//     // virtualCamera.transform.Rotate(90f, 180f, 0f, Space.World);
 
-    //         // No existing session, create a new one
-    //         ZainabRayCast newSession = new ZainabRayCast
-    //         {
-    //             Origin = origin,
-    //             Direction = direction,
-    //             RaycastDataReady = true
-    //         };
-    //         sessions.Add(newSession);
-    //     }
-    // }
-//    void TryRaycast(ref ZainabRayCast session)
+//     virtualCamera.transform.Rotate(90f, 0f, 0f, Space.World); // Adjust pitch
+//     virtualCamera.transform.Rotate(0f, -90f, 0f, Space.World); // Adjust yaw to align forward
+
+
+
+//     // Define directional vectors relative to the adjusted rotation
+//     Vector3 upVec = virtualCamera.transform.up;
+//     Vector3 forwardVec = virtualCamera.transform.forward;
+
+//     // Create a ray from the virtual camera based on the screen coordinates
+//     Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates);
+//     // ray.direction = session.Direction; 
+
+//     // Perform the raycast
+//     if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
 //     {
-//         if (session.ScreenCoordinatesReady && session.RaycastDataReady)
+//         Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
+//         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+//         if (cube != null && IsServer)
 //         {
-//             PerformRaycast(session);
+//             cube.SetHighlight(true);
 //         }
 //     }
+//     else
+//     {
+//         Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
+//     }
+// }
+
+// void PerformRaycast(ZainabRayCast session)
+// {
+//     virtualCamera.transform.position = targetObject.transform.position;
+//     Quaternion gyroAttitude = session.IpadGyro ; 
+//     virtualCamera.transform.rotation = gyroAttitude;
+//     virtualCamera.transform.Rotate(0f, 0f, 180f, Space.Self);
+//     virtualCamera.transform.Rotate(90f, 180f, 0f, Space.World);
+//     appliedGyroYAngle = virtualCamera.transform.eulerAngles.y ; 
+//     virtualCamera.transform.Rotate(0f, -calibrationYAngle, 0f, Space.World); 
+
+//     Vector3 rayDirection =  new Vector3(session.Direction.x, session.Direction.y, -session.Direction.z); // Assuming a simple z-flip might suffice
+
+//     Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates);
+//     ray.direction = rayDirection ;
+
+//     if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
+//     {
+//         Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
+//         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+//         if (cube != null && IsServer)
+//         {
+//             cube.SetHighlight(true);
+//         }
+//     }
+//     else
+//     {
+//         Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
+//     }
+// }
