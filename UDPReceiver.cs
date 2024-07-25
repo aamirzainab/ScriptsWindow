@@ -33,6 +33,8 @@ public class UDPReceiver : NetworkBehaviour
     private float initialYAngle = 0f; 
     private float appliedGyroYAngle = 0f;
     private float calibrationYAngle = 0f;
+
+    private Vector3 angleCorrection ; 
     //  public LineRenderer lineRenderer; 
     void Start()
     {
@@ -195,55 +197,62 @@ public class UDPReceiver : NetworkBehaviour
                 PerformRaycast(session);
             }
         }
-void ParseAngle(string data)
-{
-    string[] splitData = data.Split(',');
-    float angleWithNormal = float.Parse(splitData[0]);
-    float angleWithRight = float.Parse(splitData[1]);
-    float angleWithDown = float.Parse(splitData[2]);
 
-    float yaw = angleWithRight * Mathf.Deg2Rad;
-    float pitch = angleWithDown * Mathf.Deg2Rad;
-    float roll = angleWithNormal * Mathf.Deg2Rad; 
 
-    //     Vector3 rayDirection = new Vector3(
-    //     Mathf.Sin(yaw) * Mathf.Cos(pitch),
-    //     Mathf.Sin(pitch),
-    //     Mathf.Cos(yaw) * Mathf.Cos(pitch)
-    // );
-    // Vector3 rayDirection = new Vector3(pitch,yaw,roll); 
+    void ParseAngle(string data)
+    {
+        string[] splitData = data.Split(',');
+        float angleOfIntersection = float.Parse(splitData[0]);
+        float angleWithNormal = float.Parse(splitData[1]); 
 
-    // Draw the ray
-    // Debug.DrawRay(targetObject.transform.position, rayDirection * 10, Color.red, 2f);
-}
+        float radiansIntersection = angleOfIntersection * Mathf.Deg2Rad;
+        float radiansNormal = angleWithNormal * Mathf.Deg2Rad; 
+
+        // Vector3 direction = new Vector3(Mathf.Sin(radiansIntersection), 0, -Mathf.Cos(radiansIntersection));
+
+        // Vector3 planeNormal = Vector3.forward; 
+        // Quaternion rotation = Quaternion.FromToRotation(Vector3.forward, planeNormal.normalized);
+        // Vector3 alignedDirection = rotation * direction;
+
+        // Quaternion normalRotation = Quaternion.AngleAxis(angleWithNormal, Vector3.up);
+        // alignedDirection = normalRotation * alignedDirection;
+
+        // Vector3 rayOrigin = targetObject.transform.position;
+
+        // Debug.DrawRay(rayOrigin, alignedDirection * 10, Color.red, 5);  
+        // RaycastHit hit;
+        // if (Physics.Raycast(rayOrigin, alignedDirection, out hit, 10))  
+        // {
+        //     Debug.Log("Ray hit " + hit.collider.name);
+        // }
+    }
+
+
+
+
 
     // void PerformRaycast(ZainabRayCast session)
     // {
-    //     RaycastHit hit ; 
-    //     float maxRayDistance = Mathf.Infinity; 
-    //     Vector3 rayOrigin = targetObject.transform.position; 
-    //     Quaternion gyroAttitude = session.IpadRotation; 
-    //     // virtualCamera.transform.position = targetObject.transform.position; 
+    //     RaycastHit hit;
+    //     float maxRayDistance = Mathf.Infinity;
+    //     Vector3 rayOrigin = targetObject.transform.position;
+    //     Quaternion initialRotation = originRotation; 
+    //     Quaternion currentRotation = session.IpadRotation;
+    //     Quaternion rotationDelta = Quaternion.Inverse(initialRotation) * currentRotation;
+    //     Quaternion correctedRotation = new Quaternion(rotationDelta.x, rotationDelta.y, rotationDelta.z, rotationDelta.w);
 
-    //     Quaternion correctedGyro = new Quaternion(session.IpadGyro.x, session.IpadGyro.y, -session.IpadGyro.z, -session.IpadGyro.w);
 
-    //     // Unity's coordinate system adjustment
-    //     Quaternion coordinateAdjustment = Quaternion.Euler(90f, 0f, 0f);
-    //     correctedGyro *= coordinateAdjustment;
-    //     float pitch = correctedGyro.eulerAngles.y; // Nodding "yes" - tilt forward/backward
-    //     float yaw = correctedGyro.eulerAngles.z;   // Shaking "no" - rotate left/right
-    //     // targetObject.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
-    //     Vector3 rayDirection = new Vector3(session.Direction.x, session.Direction.z,session.Direction.x);
-    //     bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, maxRayDistance);
+    //     targetObject.transform.rotation = correctedRotation; 
+
+    //     Vector3 rayDirection = new Vector3(session.Direction.x,session.Direction.y,session.Direction.z); 
+
+    //     bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, 100000f);
     //     Color rayColor = didHit ? Color.red : Color.blue;
-    //     Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f); // Draw for 2 seconds
+    //     Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f);
 
     //     if (didHit)
     //     {
-    //         // HighlightObject(hit.collider.gameObject);
     //         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-    //         Debug.Log("This is the NetworkCube component: " + cube);
-
     //         if (cube != null && IsServer)
     //         {
     //             Debug.Log("Raycast hit a cube on the server.");
@@ -251,82 +260,77 @@ void ParseAngle(string data)
     //         }
     //         Debug.Log("Raycast hit an object at distance: " + hit.distance);
     //     }
-    //     else
-    //     {
-    //         // Debug.Log("Raycast did not hit any object.");
-    //     }
-    // } 
-
-
-
+    // }
     void PerformRaycast(ZainabRayCast session)
     {
-        RaycastHit hit;
         float maxRayDistance = Mathf.Infinity;
-        Vector3 rayOrigin = targetObject.transform.position;
+        GameObject imageTracking = GameObject.Find("ImageTracking");
+        virtualCamera.transform.position = targetObject.transform.position; 
+        Vector3 directionToCube = (imageTracking.transform.position - virtualCamera.transform.position).normalized;
+
+
         Quaternion initialRotation = originRotation; 
-        Quaternion currentRotation = session.IpadRotation;
-        Quaternion rotationDelta = Quaternion.Inverse(initialRotation) * currentRotation;
-        Quaternion correctedRotation = new Quaternion(rotationDelta.x, -rotationDelta.y, rotationDelta.z, rotationDelta.w);
-        // Quaternion adjustment = Quaternion.Euler(90, 0, 0); // Adjust to landscape mode orientation
-        // correctedRotation *= adjustment;
-        targetObject.transform.rotation = correctedRotation; 
-        Vector3 rayDirection = session.Direction; 
-        // Vector3 rayDirection = correctedRotation * Vector3.forward;  
+        Quaternion currentRotation =  session.IpadRotation * Quaternion.Euler(-angleCorrection);
+        Debug.Log("Initial rotation: " + initialRotation.eulerAngles.y);
+        Debug.Log("Current iPad rotation: " + currentRotation.eulerAngles.y);
 
-        bool didHit = Physics.Raycast(rayOrigin, rayDirection, out hit, 100000f);
-        Color rayColor = didHit ? Color.red : Color.blue;
-        Debug.DrawRay(rayOrigin, rayDirection * (didHit ? hit.distance : 100f), rayColor, 1f);
+        Vector3 forward = session.IpadRotation * Vector3.forward; 
+        Vector3 right = session.IpadRotation * Vector3.right;     
+        Vector3 up = session.IpadRotation * Vector3.up;         
+        virtualCamera.transform.rotation = currentRotation; 
 
-        if (didHit)
+        Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates); 
+        // imageTracking.setActive(false); 
+
+        // Vector3 rayDirection = new Vector3(session.Direction.x, session.Direction.y, session.Direction.z); 
+        // Ray ray = virtualCamera.ScreenPointToRay(session.ScreenCoordinates);
+        // Ray ray = new Ray(virtualCamera.transform.position, virtualCamera.transform.forward);
+        // Vector3 rayVector = virtualCamera.ScreenToWorldPoint(new Vector3(session.ScreenCoordinates.x, session.ScreenCoordinates.y, 100.0f)); 
+        // Vector3 rayDirection = (rayVector - virtualCamera.transform.position).normalized;
+
+        // Create the ray from the camera's position in the calculated direction
+        // Ray ray = new Ray(virtualCamera.transform.position, virtualCamera.transform.forward);
+        if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance))
         {
+            // Visualize the actual hit ray
+            Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
+            // Debug.Log("Hit: " + hit.collider.name + ", Distance: " + hit.distance);
+
+            // Check if the hit object is a NetworkCube and is on the server
             NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
             if (cube != null && IsServer)
             {
-                Debug.Log("Raycast hit a cube on the server.");
                 cube.SetHighlight(true);
+                // Debug.Log("Highlight set on cube.");
             }
-            Debug.Log("Raycast hit an object at distance: " + hit.distance);
         }
+        else
+        {
+            Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
+        }
+        // if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance))
+        // {
+        //     // Visualize the actual hit ray
+        //     Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
+        //     Debug.Log("Hit: " + hit.collider.name + ", Distance: " + hit.distance);
+
+        //     NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+        //     if (cube != null && IsServer)
+        //     {
+        //         cube.SetHighlight(true);
+        //         // Debug.Log("Highlight set on cube.");
+        //     }
+        // }
+        // else
+        // {
+        //     // Visualize the ray if no hit occurs
+        //     Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
+        //     // Debug.Log("No hit detected, drawing long blue ray.");
+        // }
     }
-//  void PerformRaycast(ZainabRayCast session)
-//     {
-
-//      foreach (Camera cam in Camera.allCameras)
-//                 {
-//                     // Check if the camera is enabled and rendering
-//                     if (cam.enabled && cam.isActiveAndEnabled)
-//                     {
-//                         // Debug.Log("Active Camera: " + cam.name + ", Display: " + cam.targetDisplay);
-//                         Ray ray = cam.ViewportPointToRay(session.ScreenCoordinates);
 
 
-//                             Quaternion initialRotation = originRotation; 
-//                             Quaternion currentRotation = session.IpadRotation;
-//                             Quaternion rotationDelta = Quaternion.Inverse(initialRotation) * currentRotation;
-//                             Quaternion correctedRotation = new Quaternion(rotationDelta.x, -rotationDelta.y, rotationDelta.z, rotationDelta.w);
-//                             Vector3 rayDirection = correctedRotation * Vector3.forward ;
-//                             ray.direction = rayDirection ; 
-//                         RaycastHit hit;
-//                         float rayLength = 100f;
-//                         Debug.DrawRay(ray.origin, ray.direction * rayLength, Color.red, 2f);
 
-//                             if (Physics.Raycast(ray.origin, ray.direction, out hit, rayLength))
-//                             {
-//                                 Debug.Log("Hit: " + hit.collider.name);
-//                                 NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-//                                 if (cube != null)
-//                                 {
-//                                     cube.SetHighlight(true);
-//                                 }
-//                             }
-//                             else
-//                             {
-//                                 Debug.Log("No hit");
-//                             }
-//                     }
-//                 }
-//     }
     void HighlightObject(GameObject obj)
     {
         var renderer = obj.GetComponent<Renderer>();
@@ -364,10 +368,25 @@ void ParseAngle(string data)
                 // originPosition = position;
                 originRotation = rotation;
                 isOriginSet = true;
-                // targetObject.transform.localPosition = originPosition;
-                // targetObject.transform.localRotation = originRotation;
 
                 Debug.Log("Origin set at rotation: " + originRotation);
+                Vector3 forward = originRotation * Vector3.forward; // Forward vector - iPad's looking direction
+                Vector3 right = originRotation * Vector3.right;     // Right vector
+                Vector3 up = originRotation * Vector3.up;           // Up vector
+
+                
+                angleCorrection = new Vector3(
+                Vector3.Angle(rotation * Vector3.forward, Vector3.forward),
+                Vector3.Angle(rotation * Vector3.right, Vector3.right),
+                Vector3.Angle(rotation * Vector3.up, Vector3.up)
+            );
+                Debug.Log("DRAWINGGGGG");
+                Debug.DrawRay(virtualCamera.transform.position, forward * 2, Color.blue,10000f);  
+                Debug.DrawRay(virtualCamera.transform.position, right * 2, Color.red, 100000f);    
+                Debug.DrawRay(virtualCamera.transform.position, up * 2, Color.green, 1000f);   
+                // Debug.DrawRay(virtualCamera.transform.position, Vector3.forward * 2, Color.cyan,10000f); 
+                // Debug.DrawRay(virtualCamera.transform.position, Vector3.right * 2, Color.magenta, 100000f);     
+                // Debug.DrawRay(virtualCamera.transform.position, Vector3.up * 2, Color.yellow, 1000f);   
             }
         }
 
