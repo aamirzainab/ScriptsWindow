@@ -35,6 +35,7 @@ public class UDPReceiver : NetworkBehaviour
     private float calibrationYAngle = 0f;
 
     private Vector3 angleCorrection ; 
+    private Vector3 planeNormal ; 
     //  public LineRenderer lineRenderer; 
     void Start()
     {
@@ -132,8 +133,6 @@ public class UDPReceiver : NetworkBehaviour
         {
             string[] splitData = data.Split(',');
 
-            // Debug.Log("doid ya come here " + splitData.Length); 
-
             if (splitData.Length >= 18) //Screen coords x, y, Ray origin x, y, z, Ray direction x, y, z, Ipad position x,y,z Ipad quaternion x y z w, input.gyro quaternion
             {
                 // Parse screen coordinates
@@ -160,7 +159,6 @@ public class UDPReceiver : NetworkBehaviour
                     float.Parse(splitData[10])
                 );
 
-                // Parse AR camera rotation
                 Quaternion cameraRotation = new Quaternion(
                     float.Parse(splitData[11]),
                     float.Parse(splitData[12]),
@@ -261,73 +259,44 @@ public class UDPReceiver : NetworkBehaviour
     //         Debug.Log("Raycast hit an object at distance: " + hit.distance);
     //     }
     // }
-    void PerformRaycast(ZainabRayCast session)
+void PerformRaycast(ZainabRayCast session)
+{
+    // Normalize the direction vector coming from the iPad
+    Vector3 normalizedDirection = session.Direction.normalized;
+
+    // Apply the iPad's current rotation to the direction to orient it correctly in the world space
+    Quaternion newRotation = session.IpadRotation;
+    Quaternion adjustment = Quaternion.Euler(0, 90, 0); // Adjust 90 degrees on Y-axis if needed
+    Vector3 worldSpaceDirection = newRotation * adjustment * normalizedDirection;
+    worldSpaceDirection.Normalize();
+
+    // Determine the start position of the ray, typically the position of the object or camera
+    Vector3 startPosition = targetObject.transform.position; // You might need to adjust this based on your specific setup
+
+    // Create the ray using the corrected world space direction
+    Ray ray = new Ray(startPosition, worldSpaceDirection);
+    float maxRayDistance = 1000f; // Maximum distance the ray should check
+
+    // Perform the raycast
+    if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance))
     {
-        float maxRayDistance = Mathf.Infinity;
-        GameObject imageTracking = GameObject.Find("ImageTracking");
-        virtualCamera.transform.position = targetObject.transform.position; 
-        Vector3 directionToCube = (imageTracking.transform.position - virtualCamera.transform.position).normalized;
+        // Visualize the ray extending from the hit point in the world space direction
+        Debug.DrawRay(hit.point, worldSpaceDirection * 100, Color.green, 2f); // Extend the ray by 100 units
 
-
-        Quaternion initialRotation = originRotation; 
-        Quaternion currentRotation =  session.IpadRotation * Quaternion.Euler(-angleCorrection);
-        Debug.Log("Initial rotation: " + initialRotation.eulerAngles.y);
-        Debug.Log("Current iPad rotation: " + currentRotation.eulerAngles.y);
-
-        Vector3 forward = session.IpadRotation * Vector3.forward; 
-        Vector3 right = session.IpadRotation * Vector3.right;     
-        Vector3 up = session.IpadRotation * Vector3.up;         
-        virtualCamera.transform.rotation = currentRotation; 
-
-        Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates); 
-        // imageTracking.setActive(false); 
-
-        // Vector3 rayDirection = new Vector3(session.Direction.x, session.Direction.y, session.Direction.z); 
-        // Ray ray = virtualCamera.ScreenPointToRay(session.ScreenCoordinates);
-        // Ray ray = new Ray(virtualCamera.transform.position, virtualCamera.transform.forward);
-        // Vector3 rayVector = virtualCamera.ScreenToWorldPoint(new Vector3(session.ScreenCoordinates.x, session.ScreenCoordinates.y, 100.0f)); 
-        // Vector3 rayDirection = (rayVector - virtualCamera.transform.position).normalized;
-
-        // Create the ray from the camera's position in the calculated direction
-        // Ray ray = new Ray(virtualCamera.transform.position, virtualCamera.transform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance))
+        // Check if the hit object is a NetworkCube and if it is on the server
+        NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
+        if (cube != null && IsServer)
         {
-            // Visualize the actual hit ray
-            Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
-            // Debug.Log("Hit: " + hit.collider.name + ", Distance: " + hit.distance);
-
-            // Check if the hit object is a NetworkCube and is on the server
-            NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-            if (cube != null && IsServer)
-            {
-                cube.SetHighlight(true);
-                // Debug.Log("Highlight set on cube.");
-            }
+            // Debug.Log("Raycast hit a cube on the server.");
+            cube.SetHighlight(true);
         }
-        else
-        {
-            Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
-        }
-        // if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance))
-        // {
-        //     // Visualize the actual hit ray
-        //     Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
-        //     Debug.Log("Hit: " + hit.collider.name + ", Distance: " + hit.distance);
-
-        //     NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-        //     if (cube != null && IsServer)
-        //     {
-        //         cube.SetHighlight(true);
-        //         // Debug.Log("Highlight set on cube.");
-        //     }
-        // }
-        // else
-        // {
-        //     // Visualize the ray if no hit occurs
-        //     Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
-        //     // Debug.Log("No hit detected, drawing long blue ray.");
-        // }
     }
+    else
+    {
+        // Visualize the ray if no hit occurs
+        Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
+    }
+}
 
 
 
@@ -374,7 +343,7 @@ public class UDPReceiver : NetworkBehaviour
                 Vector3 right = originRotation * Vector3.right;     // Right vector
                 Vector3 up = originRotation * Vector3.up;           // Up vector
 
-                
+                planeNormal = forward; 
                 angleCorrection = new Vector3(
                 Vector3.Angle(rotation * Vector3.forward, Vector3.forward),
                 Vector3.Angle(rotation * Vector3.right, Vector3.right),
@@ -401,87 +370,4 @@ public class UDPReceiver : NetworkBehaviour
 
 
 
-        // //   if (didHit)
-        // // {
-        // //     lineRenderer.SetPosition(0, rayOrigin);
-        // //     lineRenderer.SetPosition(1, hit.point); // Draw line to where ray hits object
-        // // }
-        // // else
-        // // {
-        // //     lineRenderer.SetPosition(0, rayOrigin);
-        // //     lineRenderer.SetPosition(1, rayOrigin + rayDirection * 100f); // Or some large number to indicate direction
-        // // }
-
-        
-// void PerformRaycast(ZainabRayCast session)
-// {
-//     // Set the position to the target object's position
-//     virtualCamera.transform.position = targetObject.transform.position;
-    
-//     // Get the gyroscope attitude and adjust it to Unity's coordinate system
-//     Quaternion gyroAttitude = session.IpadGyro ; 
-//     Quaternion adjustedRotation = new Quaternion(gyroAttitude.x, gyroAttitude.y, -gyroAttitude.z, -gyroAttitude.w);
-//     virtualCamera.transform.localRotation = adjustedRotation;
-
-//     // Rotate to correct for Unity's coordinate system
-//     // virtualCamera.transform.Rotate(0f, 0f, 180f, Space.Self);
-//     // virtualCamera.transform.Rotate(90f, 180f, 0f, Space.World);
-
-//     virtualCamera.transform.Rotate(90f, 0f, 0f, Space.World); // Adjust pitch
-//     virtualCamera.transform.Rotate(0f, -90f, 0f, Space.World); // Adjust yaw to align forward
-
-
-
-//     // Define directional vectors relative to the adjusted rotation
-//     Vector3 upVec = virtualCamera.transform.up;
-//     Vector3 forwardVec = virtualCamera.transform.forward;
-
-//     // Create a ray from the virtual camera based on the screen coordinates
-//     Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates);
-//     // ray.direction = session.Direction; 
-
-//     // Perform the raycast
-//     if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
-//     {
-//         Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
-//         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-//         if (cube != null && IsServer)
-//         {
-//             cube.SetHighlight(true);
-//         }
-//     }
-//     else
-//     {
-//         Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
-//     }
-// }
-
-// void PerformRaycast(ZainabRayCast session)
-// {
-//     virtualCamera.transform.position = targetObject.transform.position;
-//     Quaternion gyroAttitude = session.IpadGyro ; 
-//     virtualCamera.transform.rotation = gyroAttitude;
-//     virtualCamera.transform.Rotate(0f, 0f, 180f, Space.Self);
-//     virtualCamera.transform.Rotate(90f, 180f, 0f, Space.World);
-//     appliedGyroYAngle = virtualCamera.transform.eulerAngles.y ; 
-//     virtualCamera.transform.Rotate(0f, -calibrationYAngle, 0f, Space.World); 
-
-//     Vector3 rayDirection =  new Vector3(session.Direction.x, session.Direction.y, -session.Direction.z); // Assuming a simple z-flip might suffice
-
-//     Ray ray = virtualCamera.ViewportPointToRay(session.ScreenCoordinates);
-//     ray.direction = rayDirection ;
-
-//     if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
-//     {
-//         Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.red, 2f);
-//         NetworkCube cube = hit.collider.GetComponent<NetworkCube>();
-//         if (cube != null && IsServer)
-//         {
-//             cube.SetHighlight(true);
-//         }
-//     }
-//     else
-//     {
-//         Debug.DrawRay(ray.origin, ray.direction * 10000f, Color.blue, 2f);
-//     }
-// }
+ 
